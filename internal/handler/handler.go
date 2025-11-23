@@ -21,13 +21,15 @@ type Handler struct {
 	builtInCache                      cache.Cache
 	logger                            logger.Logger
 	stats                             stats.StatsRecorder
+	hijackManager                     *model.HijackManager
 }
 
 func NewHandler(strategy int, builtInCache bool,
 	upstreams []*model.Upstream,
 	dataPath string,
 	log logger.Logger,
-	statsRecorder stats.StatsRecorder) *Handler {
+	statsRecorder stats.StatsRecorder,
+	hijackManager *model.HijackManager) *Handler {
 	var c cache.Cache
 	if builtInCache {
 		var err error
@@ -55,6 +57,7 @@ func NewHandler(strategy int, builtInCache bool,
 		builtInCache:     c,
 		logger:           log,
 		stats:            statsRecorder,
+		hijackManager:    hijackManager,
 	}
 }
 
@@ -347,6 +350,11 @@ func (h *Handler) HandleDnsMsg(req *dns.Msg, clientIP, domain string) *dns.Msg {
 	// 记录失败查询
 	if resp.Rcode == dns.RcodeServerFailure && h.stats != nil {
 		h.stats.RecordFailed()
+	}
+
+	// 应用IP劫持规则（在设置响应前）
+	if h.hijackManager != nil {
+		h.hijackManager.ApplyHijack(resp)
 	}
 
 	resp.SetReply(req)

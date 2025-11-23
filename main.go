@@ -56,6 +56,9 @@ func main() {
 	debugLogger := logger.New(config.Debug)
 	statsRecorder := stats.NewStats()
 
+	// 初始化 Hijack Manager
+	hijackManager := model.NewHijackManager(dataPath, debugLogger)
+
 	// 加载持久化的统计数据
 	if err := statsRecorder.Load(dataPath); err != nil {
 		log.Printf("Failed to load stats from disk: %v", err)
@@ -72,7 +75,7 @@ func main() {
 	}
 
 	// Bootstrap handler 不需要缓存，只是用于初始化连接
-	bootstrapHandler := handler.NewHandler(model.StrategyAnyResult, false, config.Bootstrap, dataPath, debugLogger, nil)
+	bootstrapHandler := handler.NewHandler(model.StrategyAnyResult, false, config.Bootstrap, dataPath, debugLogger, nil, nil)
 
 	for i := 0; i < len(config.Upstreams); i++ {
 		config.Upstreams[i].InitConnectionPool(bootstrapHandler.LookupIP)
@@ -82,7 +85,7 @@ func main() {
 	serverTCP := &dns.Server{Addr: config.ServeAddr, Net: "tcp"}
 
 	// 只有 upstream handler 需要缓存
-	upstreamHandler := handler.NewHandler(config.Strategy, config.BuiltInCache, config.Upstreams, dataPath, debugLogger, statsRecorder)
+	upstreamHandler := handler.NewHandler(config.Strategy, config.BuiltInCache, config.Upstreams, dataPath, debugLogger, statsRecorder, hijackManager)
 	dns.HandleFunc(".", upstreamHandler.HandleRequest)
 
 	// Setup graceful shutdown
@@ -120,7 +123,7 @@ func main() {
 	webServerHandler := http.NewServeMux()
 
 	// 注册监控面板路由
-	webHandler := web.NewHandler(statsRecorder, version, checkUpdateCh, debugLogger)
+	webHandler := web.NewHandler(statsRecorder, version, checkUpdateCh, debugLogger, hijackManager)
 	webHandler.RegisterRoutes(webServerHandler)
 
 	// 如果启用 DoH，注册 DoH 路由

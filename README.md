@@ -94,6 +94,35 @@ Windows 上的 [dig](https://help.dyn.com/how-to-use-binds-dig-tool/) 工具
 - Top 客户端 IP 和查询域名排行
 - 统计数据重置功能
 
+### :zap: DNS IP 劫持（新功能）
+针对 Cloudflare 等 CDN 服务，动态替换解析出的 IP 为优选 IP，提升访问速度。
+
+**特性：**
+- 只修改 A 记录的 IP 地址，不影响其他记录（特别是 HTTPS/ECH 记录）
+- 规则持久化存储，重启不丢失
+- 提供 RESTful API 进行动态管理
+
+**API 端点：**
+- `POST /api/hijack` - 添加劫持规则
+- `DELETE /api/hijack?domain={domain}` - 删除劫持规则
+- `GET /api/hijack/list` - 查看所有劫持规则
+
+**使用示例：**
+```bash
+# 添加劫持规则
+curl -X POST http://127.0.0.1:8854/api/hijack \
+  -H "Content-Type: application/json" \
+  -d '{"domain":"cloudflare.com","ipv4":"1.1.1.1"}'
+
+# 查看所有规则
+curl http://127.0.0.1:8854/api/hijack/list
+
+# 删除规则
+curl -X DELETE "http://127.0.0.1:8854/api/hijack?domain=cloudflare.com"
+```
+
+详细文档：[DNS IP 劫持功能说明](./doc/HIJACK_FEATURE.md)
+
 ### :lock: DoH (DNS over HTTPS)
 DoH 服务与 Web 面板共用端口，访问路径：`/dns-query`
 

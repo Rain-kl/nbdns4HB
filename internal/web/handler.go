@@ -3,9 +3,11 @@ package web
 import (
 	"embed"
 	"encoding/json"
+	"io"
 	"io/fs"
 	"net/http"
 
+	"github.com/naiba/nbdns/internal/model"
 	"github.com/naiba/nbdns/internal/stats"
 	"github.com/naiba/nbdns/pkg/logger"
 )
@@ -19,15 +21,17 @@ type Handler struct {
 	version       string
 	checkUpdateCh chan<- struct{}
 	logger        logger.Logger
+	hijackManager *model.HijackManager
 }
 
 // NewHandler 创建Web处理器
-func NewHandler(s stats.StatsRecorder, ver string, checkCh chan<- struct{}, log logger.Logger) *Handler {
+func NewHandler(s stats.StatsRecorder, ver string, checkCh chan<- struct{}, log logger.Logger, hm *model.HijackManager) *Handler {
 	return &Handler{
 		stats:         s,
 		version:       ver,
 		checkUpdateCh: checkCh,
 		logger:        log,
+		hijackManager: hm,
 	}
 }
 
@@ -38,6 +42,9 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/stats/reset", h.handleStatsReset)
 	mux.HandleFunc("/api/version", h.handleVersion)
 	mux.HandleFunc("/api/check-update", h.handleCheckUpdate)
+	// 劫持相关API
+	mux.HandleFunc("/api/hijack", h.handleHijack)
+	mux.HandleFunc("/api/hijack/list", h.handleHijackList)
 
 	// 静态文件服务
 	staticFS, err := fs.Sub(staticFiles, "static")
@@ -175,5 +182,127 @@ func (h *Handler) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
 			LatestVersion:  ver,
 			Message:        "更新检查正在进行中",
 		})
+	}
+}
+
+// HijackRequest 劫持请求参数
+type HijackRequest struct {
+	Domain string `json:"domain"`
+	IPv4   string `json:"ipv4"`
+}
+
+// HijackResponse 劫持响应
+type HijackResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+// handleHijack 处理劫持规则的增删操作
+// POST 添加或更新劫持规则
+// DELETE 删除劫持规则
+func (h *Handler) handleHijack(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if h.hijackManager == nil {
+		http.Error(w, `{"success":false,"message":"Hijack manager not initialized"}`, http.StatusInternalServerError)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPost:
+		// 添加或更新劫持规则
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			json.NewEncoder(w).Encode(HijackResponse{
+				Success: false,
+				Message: "Failed to read request body: " + err.Error(),
+			})
+			return
+		}
+		defer r.Body.Close()
+
+		var req HijackRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			json.NewEncoder(w).Encode(HijackResponse{
+				Success: false,
+				Message: "Invalid JSON: " + err.Error(),
+			})
+			return
+		}
+
+		if req.Domain == "" || req.IPv4 == "" {
+			json.NewEncoder(w).Encode(HijackResponse{
+				Success: false,
+				Message: "Domain and IPv4 are required",
+			})
+			return
+		}
+
+		if err := h.hijackManager.AddRule(req.Domain, req.IPv4); err != nil {
+			json.NewEncoder(w).Encode(HijackResponse{
+				Success: false,
+				Message: "Failed to add hijack rule: " + err.Error(),
+			})
+			return
+		}
+
+		h.logger.Printf("Hijack rule added via API: %s -> %s", req.Domain, req.IPv4)
+		json.NewEncoder(w).Encode(HijackResponse{
+			Success: true,
+			Message: "Hijack rule added successfully",
+		})
+
+	case http.MethodDelete:
+		// 删除劫持规则
+		domain := r.URL.Query().Get("domain")
+		if domain == "" {
+			json.NewEncoder(w).Encode(HijackResponse{
+				Success: false,
+				Message: "Domain parameter is required",
+			})
+			return
+		}
+
+		if err := h.hijackManager.RemoveRule(domain); err != nil {
+			json.NewEncoder(w).Encode(HijackResponse{
+				Success: false,
+				Message: "Failed to remove hijack rule: " + err.Error(),
+			})
+			return
+		}
+
+		h.logger.Printf("Hijack rule removed via API: %s", domain)
+		json.NewEncoder(w).Encode(HijackResponse{
+			Success: true,
+			Message: "Hijack rule removed successfully",
+		})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleHijackList 获取所有劫持规则
+func (h *Handler) handleHijackList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+
+	if h.hijackManager == nil {
+		http.Error(w, `{"success":false,"message":"Hijack manager not initialized"}`, http.StatusInternalServerError)
+		return
+	}
+
+	rules := h.hijackManager.GetAllRules()
+	if err := json.NewEncoder(w).Encode(rules); err != nil {
+		h.logger.Printf("Error encoding hijack rules JSON: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
 	}
 }
