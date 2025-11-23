@@ -179,7 +179,9 @@ func (hm *HijackManager) ApplyHijack(msg *dns.Msg) bool {
 	}
 
 	if modified {
-		hm.logger.Printf("Successfully hijacked DNS response for %s", queryDomain)
+		hm.logger.Printf("✅ [HIJACK] Successfully hijacked %s to %s", queryDomain, hijackIP)
+	} else {
+		hm.logger.Printf("⚠️  [HIJACK] No records modified for %s (rule exists but no A/HTTPS records found)", queryDomain)
 	}
 
 	return modified

@@ -338,7 +338,9 @@ func (h *Handler) HandleDnsMsg(req *dns.Msg, clientIP, domain string) *dns.Msg {
 
 			// 应用IP劫持规则（即使是缓存的响应也要劫持）
 			if h.hijackManager != nil {
-				h.hijackManager.ApplyHijack(resp)
+				if h.hijackManager.ApplyHijack(resp) {
+					h.logger.Printf("📌 [CACHE+HIJACK] Applied hijack to cached response")
+				}
 			}
 
 			resp.SetReply(req)
@@ -360,7 +362,9 @@ func (h *Handler) HandleDnsMsg(req *dns.Msg, clientIP, domain string) *dns.Msg {
 
 	// 应用IP劫持规则（在设置响应前）
 	if h.hijackManager != nil {
-		h.hijackManager.ApplyHijack(resp)
+		if h.hijackManager.ApplyHijack(resp) {
+			h.logger.Printf("📌 [UPSTREAM+HIJACK] Applied hijack to upstream response")
+		}
 	}
 
 	resp.SetReply(req)
