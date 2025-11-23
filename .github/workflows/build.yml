@@ -53,7 +53,6 @@ jobs:
           echo "Generated version: $VERSION"
 
       - name: Build binary
-        working-directory: ./nbdns4HB
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
@@ -76,7 +75,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nbdns4HB-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.version.outputs.version }}
-          path: nbdns4HB/nbdns4HB-${{ matrix.os }}-${{ matrix.arch }}*
+          path: nbdns4HB-${{ matrix.os }}-${{ matrix.arch }}*
           retention-days: 90
 
   release:
