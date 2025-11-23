@@ -124,7 +124,7 @@ func (hm *HijackManager) GetAllRules() []HijackRule {
 }
 
 // ApplyHijack 应用劫持规则到DNS响应
-// 只修改A记录的IP地址，不影响其他记录（特别是HTTPS/ECH记录）
+// 修改A记录和HTTPS记录中的IPv4地址，保留ECH等其他数据
 func (hm *HijackManager) ApplyHijack(msg *dns.Msg) bool {
 	if msg == nil || len(msg.Question) == 0 {
 		return false
@@ -139,29 +139,47 @@ func (hm *HijackManager) ApplyHijack(msg *dns.Msg) bool {
 		return false
 	}
 
-	// 检查是否有A记录需要劫持
-	hasARecord := false
-	for _, answer := range msg.Answer {
-		if answer.Header().Rrtype == dns.TypeA {
-			hasARecord = true
-			break
-		}
-	}
+	hm.logger.Printf("Found hijack rule for %s -> %s", queryDomain, hijackIP)
 
-	if !hasARecord {
-		return false
-	}
-
-	// 只替换A记录的IP地址，保留其他所有记录
 	modified := false
+
+	// 遍历所有应答记录
 	for i, answer := range msg.Answer {
-		if aRecord, ok := answer.(*dns.A); ok {
-			oldIP := aRecord.A.String()
-			aRecord.A = net.ParseIP(hijackIP).To4()
-			msg.Answer[i] = aRecord
+		switch rr := answer.(type) {
+		case *dns.A:
+			// 劫持 A 记录
+			oldIP := rr.A.String()
+			rr.A = net.ParseIP(hijackIP).To4()
+			msg.Answer[i] = rr
 			modified = true
-			hm.logger.Printf("Hijacked DNS response for %s: %s -> %s", queryDomain, oldIP, hijackIP)
+			hm.logger.Printf("Hijacked A record for %s: %s -> %s", queryDomain, oldIP, hijackIP)
+
+		case *dns.HTTPS:
+			// 劫持 HTTPS 记录中的 IPv4Hint (参数4)
+			if len(rr.Value) > 0 {
+				for j, param := range rr.Value {
+					if param.Key() == dns.SVCB_IPV4HINT {
+						// 将 SVCBIPv4Hint 类型的值替换为劫持的IP
+						if ipv4Hint, ok := param.(*dns.SVCBIPv4Hint); ok {
+							oldIPs := make([]string, len(ipv4Hint.Hint))
+							for k, ip := range ipv4Hint.Hint {
+								oldIPs[k] = ip.String()
+							}
+							// 替换为单个劫持IP
+							ipv4Hint.Hint = []net.IP{net.ParseIP(hijackIP).To4()}
+							rr.Value[j] = ipv4Hint
+							modified = true
+							hm.logger.Printf("Hijacked HTTPS IPv4Hint for %s: %v -> %s", queryDomain, oldIPs, hijackIP)
+						}
+					}
+				}
+				msg.Answer[i] = rr
+			}
 		}
+	}
+
+	if modified {
+		hm.logger.Printf("Successfully hijacked DNS response for %s", queryDomain)
 	}
 
 	return modified

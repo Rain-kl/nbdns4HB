@@ -98,9 +98,11 @@ Windows 上的 [dig](https://help.dyn.com/how-to-use-binds-dig-tool/) 工具
 针对 Cloudflare 等 CDN 服务，动态替换解析出的 IP 为优选 IP，提升访问速度。
 
 **特性：**
-- 只修改 A 记录的 IP 地址，不影响其他记录（特别是 HTTPS/ECH 记录）
+- 修改 A 记录和 HTTPS 记录中的 IPv4 地址
+- 完整保留 ECH、ALPN 等重要参数
 - 规则持久化存储，重启不丢失
 - 提供 RESTful API 进行动态管理
+- 支持缓存场景（缓存响应也会被劫持）
 
 **API 端点：**
 - `POST /api/hijack` - 添加劫持规则

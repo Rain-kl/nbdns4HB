@@ -31,18 +31,27 @@ def check(domain):
                             f"✅ ECH ({len(eb)}字节): {base64.b64encode(eb).decode()[:50]}..."
                         )
                         return True
-                    elif k == 1:
-                        print(f"ALPN: {v}")
-                    elif k == 4:
-                        print(f"IPv4: {v}")
-                    elif k == 6:
-                        print(f"IPv6: {v}")
+                    elif k == 1:  # ALPN
+                        alpn_list = v.alpn if hasattr(v, "alpn") else []
+                        alpn_str = ", ".join(
+                            [
+                                a.decode("utf-8") if isinstance(a, bytes) else a
+                                for a in alpn_list
+                            ]
+                        )
+                        print(f"ALPN: {alpn_str}")
+                    elif k == 4:  # IPv4Hint
+                        ipv4_list = v.addresses if hasattr(v, "addresses") else []
+                        print(f"IPv4: {', '.join(ipv4_list)}")
+                    elif k == 6:  # IPv6Hint
+                        ipv6_list = v.addresses if hasattr(v, "addresses") else []
+                        print(f"IPv6: {', '.join(ipv6_list)}")
     print("❌ 无 ECH")
     return False
 
 
 if __name__ == "__main__":
-    domains = sys.argv[1:] or ["crypto.cloudflare.com", "defo.ie", "cloudflare.com","linux.do","google.com"]
+    domains = sys.argv[1:] or ["linux.do"]
     results = [(d, check(d)) for d in domains]
     print(f"\n{'='*60}\n✅ {sum(r for _,r in results)}/{len(results)} 支持 ECH")
     for d, r in results:

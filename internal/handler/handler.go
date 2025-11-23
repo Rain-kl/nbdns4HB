@@ -335,6 +335,12 @@ func (h *Handler) HandleDnsMsg(req *dns.Msg, clientIP, domain string) *dns.Msg {
 				}
 				header.Ttl = uint32(time.Until(v.Expires).Seconds())
 			}
+
+			// 应用IP劫持规则（即使是缓存的响应也要劫持）
+			if h.hijackManager != nil {
+				h.hijackManager.ApplyHijack(resp)
+			}
+
 			resp.SetReply(req)
 			return resp
 		}
